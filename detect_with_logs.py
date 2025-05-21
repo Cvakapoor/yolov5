@@ -17,7 +17,7 @@ if str(ROOT) not in sys.path:
 #ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
 from models.experimental import attempt_load
-from utils.datasets import LoadStreams, LoadImages
+from utils.dataloaders import LoadStreams, LoadImages
 from utils.general import check_img_size, non_max_suppression, apply_classifier, scale_coords, set_logging
 from utils.plots import plot_one_box
 from utils.torch_utils import select_device, load_classifier, time_synchronized
