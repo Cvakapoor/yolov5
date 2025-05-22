@@ -4,11 +4,11 @@ import sys
 import time
 import csv
 from pathlib import Path
+import datetime
 
 import cv2
 import torch
 import numpy as np
-from numpy import random
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
@@ -43,9 +43,15 @@ def run(weights='yolov5s.pt', source='data/images', img_size=640, conf_thres=0.2
     dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=pt)
     model.warmup(imgsz=(1 if pt else dataset.bs, 3, *imgsz))
 
+    # support multiple classes: comma-separated
+    target_classes = [cls.strip().lower() for cls in target_class.split(',')]
+
     log_data = []
 
-    for path, img, im0s, vid_cap, s in dataset:
+    for frame_idx, (path, img, im0s, vid_cap, s) in enumerate(dataset):
+        if frame_idx % 50 == 0:
+            print(f"Processing frame {frame_idx} ...")
+
         img = torch.from_numpy(img).to(device).float() / 255.0
         if img.ndimension() == 3:
             img = img.unsqueeze(0)
@@ -53,14 +59,13 @@ def run(weights='yolov5s.pt', source='data/images', img_size=640, conf_thres=0.2
         pred = model(img)
         pred = non_max_suppression(pred, conf_thres, iou_thres)
 
-        # === Video Timestamp ===
+        # Video timestamp formatting: HH:MM:SS.mmm
         if vid_cap:
             frame_number = int(vid_cap.get(cv2.CAP_PROP_POS_FRAMES)) - 1
             fps = vid_cap.get(cv2.CAP_PROP_FPS)
-            video_time = frame_number / fps
-            minutes, seconds = divmod(video_time, 60)
-            milliseconds = int((seconds % 1) * 1000)
-            timestamp = f"{int(minutes):02}:{int(seconds):02}.{milliseconds:03}"
+            video_time_sec = frame_number / fps if fps > 0 else 0
+            td = datetime.timedelta(seconds=video_time_sec)
+            timestamp = str(td)[:-3]  # drop microseconds to milliseconds
         else:
             timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
 
@@ -70,11 +75,14 @@ def run(weights='yolov5s.pt', source='data/images', img_size=640, conf_thres=0.2
 
                 for *xyxy, conf, cls in det:
                     class_name = names[int(cls)]
-                    if class_name.lower() == target_class.lower():
-                        log_data.append([timestamp, class_name, float(conf)])
+                    if class_name.lower() in target_classes:
+                        log_data.append([timestamp, class_name, f"{float(conf):.3f}"])
 
-    save_detection_log(csv_output, log_data)
-    print(f"\n✅ Detection log saved to {csv_output}")
+    if not log_data:
+        print("No detections found for target class(es).")
+    else:
+        save_detection_log(csv_output, log_data)
+        print(f"\n✅ Detection log saved to {csv_output}")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -85,7 +93,7 @@ if __name__ == '__main__':
     parser.add_argument('--iou', type=float, default=0.45)
     parser.add_argument('--device', default='')
     parser.add_argument('--output', type=str, default='inference/output')
-    parser.add_argument('--target_class', type=str, default='anomaly')
+    parser.add_argument('--target_class', type=str, default='anomaly', help="Comma separated classes to log")
     parser.add_argument('--csv_output', type=str, default='detection_log.csv')
     opt = parser.parse_args()
 
